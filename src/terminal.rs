@@ -21,8 +21,8 @@ impl Terminal {
         let terminal_size = termion::terminal_size()?;
         Ok(Self {
             size: TerminalSize {
-                height: terminal_size.0,
-                width: terminal_size.1,
+                width: terminal_size.0,
+                height: terminal_size.1,
             },
 
             _stdout: stdout().into_raw_mode()?,

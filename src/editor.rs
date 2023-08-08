@@ -1,7 +1,10 @@
+use std::env;
 use termion::event::Key;
 
 use crate::terminal::Terminal;
+use crate::{Document, Row};
 
+#[derive(Default)]
 pub struct CursorPosition {
     pub x: usize,
     pub y: usize,
@@ -9,18 +12,31 @@ pub struct CursorPosition {
 
 pub struct Editor {
     quit: bool,
-    terminal: Terminal,
+    pub terminal: Terminal,
     cursor_position: CursorPosition,
+    document: Document,
+    offset: CursorPosition,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 impl Editor {
     pub fn default() -> Self {
+        let argument: Vec<String> = env::args().collect();
+
+        let document = if argument.len() > 1 {
+            let file_name = &argument[1];
+            Document::open(&file_name).unwrap_or_default()
+        } else {
+            Document::default()
+        };
+
         Self {
             quit: false,
             terminal: Terminal::default().expect("Failed to load terminal"),
-            cursor_position: CursorPosition { x: 0, y: 0 },
+            cursor_position: CursorPosition::default(),
+            document,
+            offset: CursorPosition::default(),
         }
     }
 
@@ -42,13 +58,13 @@ impl Editor {
 
     fn refresh_screen(&self) -> Result<(), std::io::Error> {
         Terminal::hide_cursor();
-        Terminal::cursor_position(&CursorPosition { x: 0, y: 0 });
+        Terminal::cursor_position(&CursorPosition::default());
         if self.quit {
             Terminal::clear_screen();
             println!("Good bye!\r");
         } else {
-            self.draw_tilde_rows();
-            Terminal::cursor_position(&self.cursor_position);
+            self.draw_rows();
+            Terminal::cursor_position(&CursorPosition { x: self.cursor_position.x.saturating_sub(self.offset.x), y: self.cursor_position.y.saturating_sub(self.offset.y), });
         }
 
         Terminal::show_cursor();
@@ -71,15 +87,37 @@ impl Editor {
             _ => (),
         }
 
+        self.scroll();
         Ok(())
+    }
+
+    fn scroll(&mut self) {
+        let CursorPosition { x, y } = self.cursor_position;
+
+        let size = self.terminal.terminal_size();
+        let height = size.height as usize;
+        let width = size.width as usize;
+
+        let offset = &mut self.offset;
+
+        if y < offset.y {
+            offset.y = y;
+        } else if y >= offset.y.saturating_add(height) {
+            offset.y = y.saturating_sub(height).saturating_add(1);
+        }
+        if x < offset.x {
+            offset.x = x;
+        } else if x >= offset.x.saturating_add(width) {
+            offset.x = x.saturating_sub(width).saturating_add(1);
+        }
     }
 
     fn move_cursor(&mut self, key: Key) {
         let CursorPosition { mut x, mut y } = self.cursor_position;
 
         let size = self.terminal.terminal_size();
-        let height = size.height as usize;
-        let width = size.width as usize;
+        let height = self.document.length();
+        let width = size.width.saturating_sub(1) as usize;
 
         match key {
             Key::Up => y = y.saturating_sub(1),
@@ -104,13 +142,24 @@ impl Editor {
         self.cursor_position = CursorPosition { x, y }
     }
 
-    fn draw_tilde_rows(&self) {
-        let height = self.terminal.terminal_size().height;
+    pub fn draw_row(&self, row: &Row) {
+        let width = self.terminal.terminal_size().width as usize;
+        let start = self.offset.x;
+        let end = self.offset.x + width;
 
-        for row in 0..height - 1 {
+        let row = row.render(start, end);
+        println!("{}{}\r",width, row);
+    }
+
+    fn draw_rows(&self) {
+        let height = self.terminal.terminal_size().height;
+        println!("{}\r",height);
+        for terminal_row in 0..height - 1 {
             Terminal::clear_current_line();
 
-            if row == height / 3 {
+            if let Some(row) = self.document.row(terminal_row as usize + self.offset.y) {
+                self.draw_row(row);
+            } else if self.document.is_empty() && terminal_row == height / 3 {
                 println!("TEXT EDITOR --version {}\r", VERSION);
                 self.welcome_message();
             } else {
@@ -129,11 +178,11 @@ impl Editor {
 
         welcome_message = format!("~{}{}", spaces, welcome_message);
         welcome_message.truncate(width);
-        println!("{}", welcome_message);
+        println!("{}\r", welcome_message);
     }
 }
 
 fn print_error(e: std::io::Error) {
     Terminal::clear_screen();
-    panic!("{}", e);
+    panic!("{e}");
 }
