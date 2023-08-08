@@ -2,9 +2,15 @@ use termion::event::Key;
 
 use crate::terminal::Terminal;
 
+pub struct CursorPosition {
+    pub x: usize,
+    pub y: usize,
+}
+
 pub struct Editor {
     quit: bool,
     terminal: Terminal,
+    cursor_position: CursorPosition,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -14,6 +20,7 @@ impl Editor {
         Self {
             quit: false,
             terminal: Terminal::default().expect("Failed to load terminal"),
+            cursor_position: CursorPosition { x: 0, y: 0 },
         }
     }
 
@@ -35,13 +42,13 @@ impl Editor {
 
     fn refresh_screen(&self) -> Result<(), std::io::Error> {
         Terminal::hide_cursor();
-        Terminal::cursor_position(0, 0);
+        Terminal::cursor_position(&CursorPosition { x: 0, y: 0 });
         if self.quit {
             Terminal::clear_screen();
             println!("Good bye!\r");
         } else {
             self.draw_tilde_rows();
-            Terminal::cursor_position(0, 0);
+            Terminal::cursor_position(&self.cursor_position);
         }
 
         Terminal::show_cursor();
@@ -53,10 +60,48 @@ impl Editor {
 
         match keypressed {
             Key::Ctrl('q') => self.quit = true,
+            Key::Up
+            | Key::Down
+            | Key::Left
+            | Key::Right
+            | Key::PageUp
+            | Key::PageDown
+            | Key::Home
+            | Key::End => self.move_cursor(keypressed),
             _ => (),
         }
 
         Ok(())
+    }
+
+    fn move_cursor(&mut self, key: Key) {
+        let CursorPosition { mut x, mut y } = self.cursor_position;
+
+        let size = self.terminal.terminal_size();
+        let height = size.height as usize;
+        let width = size.width as usize;
+
+        match key {
+            Key::Up => y = y.saturating_sub(1),
+            Key::Down => {
+                if y < height {
+                    y = y.saturating_add(1)
+                }
+            }
+            Key::Left => x = x.saturating_sub(1),
+            Key::Right => {
+                if x < width {
+                    x = x.saturating_add(1)
+                }
+            }
+            Key::PageUp => y = 0,
+            Key::PageDown => y = height,
+            Key::Home => x = 0,
+            Key::End => x = width,
+            _ => (),
+        }
+
+        self.cursor_position = CursorPosition { x, y }
     }
 
     fn draw_tilde_rows(&self) {
