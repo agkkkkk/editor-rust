@@ -1,5 +1,6 @@
 use std::io::{self, stdout, Write};
 
+use termion::color;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
@@ -70,5 +71,19 @@ impl Terminal {
         }
     }
 
+    pub fn set_bg_color(color: color::Rgb) {
+        print!("{}\r", color::Bg(color));
+    }
 
+    pub fn reset_bg_color() {
+        print!("{}\r", color::Bg(color::Reset));
+    }
+
+    pub fn set_fg_color(color: color::Rgb) {
+        print!("{}\r", color::Fg(color));
+    }
+
+    pub fn reset_fg_color() {
+        print!("{}\r", color::Fg(color::Reset));
+    }
 }

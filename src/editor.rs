@@ -1,4 +1,6 @@
 use std::env;
+use std::time::{Duration, Instant};
+use termion::color;
 use termion::event::Key;
 
 use crate::terminal::Terminal;
@@ -10,23 +12,46 @@ pub struct CursorPosition {
     pub y: usize,
 }
 
+pub struct StatusMessage {
+    message: String,
+    time: Instant,
+}
+
+impl StatusMessage {
+    pub fn from(message: String) -> Self {
+        Self {
+            message: message,
+            time: Instant::now(),
+        }
+    }
+}
+
 pub struct Editor {
     quit: bool,
     pub terminal: Terminal,
     cursor_position: CursorPosition,
     document: Document,
     offset: CursorPosition,
+    status_message: StatusMessage,
 }
 
+const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
+const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 impl Editor {
     pub fn default() -> Self {
         let argument: Vec<String> = env::args().collect();
-
+        let mut initial_status = String::from("HELP: Ctrl + q to QUIT");
         let document = if argument.len() > 1 {
             let file_name = &argument[1];
-            Document::open(&file_name).unwrap_or_default()
+            let doc = Document::open(&file_name);
+            if doc.is_ok() {
+                doc.unwrap()
+            } else {
+                initial_status = format!("Could not load the file: {}", file_name);
+                Document::default()
+            }
         } else {
             Document::default()
         };
@@ -37,6 +62,7 @@ impl Editor {
             cursor_position: CursorPosition::default(),
             document,
             offset: CursorPosition::default(),
+            status_message: StatusMessage::from(initial_status),
         }
     }
 
@@ -64,6 +90,8 @@ impl Editor {
             println!("Good bye!\r");
         } else {
             self.draw_rows();
+            self.draw_status_bar();
+            self.draw_message_bar();
 
             Terminal::cursor_position(&CursorPosition {
                 x: self.cursor_position.x.saturating_sub(self.offset.x),
@@ -221,6 +249,50 @@ impl Editor {
         welcome_message = format!("~{}{}", spaces, welcome_message);
         welcome_message.truncate(width);
         println!("{}\r", welcome_message);
+    }
+
+    fn draw_status_bar(&self) {
+        let mut status;
+
+        let width = self.terminal.terminal_size().width as usize;
+
+        let mut file_name = " ".to_string();
+        if let Some(file) = &self.document.file_name {
+            file_name = file.clone();
+            file_name.truncate(20);
+        }
+
+        status = format!(
+            "{} - {} Lines.  Current line - Ln {}, Col {}",
+            file_name,
+            self.document.length(),
+            self.cursor_position.y + 1,
+            self.cursor_position.x + 1
+        );
+
+        if width > status.len() {
+            status.push_str(&" ".repeat(width - status.len()));
+        }
+
+        status.truncate(width);
+
+        Terminal::set_bg_color(STATUS_BG_COLOR);
+        Terminal::set_fg_color(STATUS_FG_COLOR);
+        println!("{}\r", status);
+        Terminal::reset_fg_color();
+        Terminal::reset_bg_color();
+    }
+
+    fn draw_message_bar(&self) {
+        Terminal::clear_current_line();
+
+        let status = &self.status_message;
+
+        if Instant::now() - status.time < Duration::new(5, 0) {
+            let mut text = status.message.clone();
+            text.truncate(self.terminal.terminal_size().width as usize);
+            print!("{}\r", text);
+        }
     }
 }
 
