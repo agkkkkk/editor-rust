@@ -22,7 +22,7 @@ impl Terminal {
         Ok(Self {
             size: TerminalSize {
                 width: terminal_size.0,
-                height: terminal_size.1,
+                height: terminal_size.1.saturating_sub(2),
             },
 
             _stdout: stdout().into_raw_mode()?,
@@ -69,4 +69,6 @@ impl Terminal {
             };
         }
     }
+
+
 }
