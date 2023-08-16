@@ -35,7 +35,25 @@ impl Document {
         self.rows.len()
     }
 
+    pub fn insert_new_line(&mut self, at_posi: &CursorPosition) {
+        if at_posi.y > self.length() {
+            return;
+        }
+
+        if at_posi.y > self.length() {
+            self.rows.push(Row::default());
+            return;
+        }
+        let new_row = self.rows.get_mut(at_posi.y).unwrap().split(at_posi.x);
+        self.rows.insert(at_posi.y + 1, new_row);
+    }
+
     pub fn insert(&mut self, at_posi: &CursorPosition, character: char) {
+        if character == '\n' {
+            self.insert_new_line(at_posi);
+            return;
+        }
+
         if at_posi.y == self.length() {
             let mut row = Row::default();
             row.insert(0, character);
@@ -47,15 +65,17 @@ impl Document {
     }
 
     pub fn delete(&mut self, at_posi: &CursorPosition) {
-        if at_posi.y >= self.length() {
+        let len = self.length();
+        if at_posi.y >= len {
             return;
+        }
+        if at_posi.x == self.rows.get_mut(at_posi.y).unwrap().length() && at_posi.y < len - 1 {
+            let next_row = self.rows.remove(at_posi.y + 1);
+            let row = self.rows.get_mut(at_posi.y).unwrap();
+            row.append(&next_row);
         } else {
             let row = self.rows.get_mut(at_posi.y).unwrap();
             row.delete(at_posi.x);
         }
-    }
-
-    pub fn append(&mut self, line: Row) {
-        
     }
 }
